@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      color: #333;
+    }
+    h3 {
+      margin: 0 0 12px;
+      font-size: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      padding: 6px 8px;
+      margin-bottom: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .toggle-row label {
+      margin-bottom: 0;
+    }
+    .status {
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      text-align: center;
+    }
+    .status.on { background: #d4edda; color: #155724; }
+    .status.off { background: #f8d7da; color: #721c24; }
+    .row-half {
+      display: flex;
+      gap: 12px;
+    }
+    .row-half > div {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <h3>💬 Slack Comment Overlay</h3>
+
+  <label for="token">Slack Bot Token</label>
+  <input type="text" id="token" placeholder="xoxb-...">
+
+  <label for="channel">Channel ID</label>
+  <input type="text" id="channel" placeholder="C0123456789">
+
+  <div class="toggle-row">
+    <label for="enabled">表示</label>
+    <input type="checkbox" id="enabled">
+  </div>
+
+  <div class="row-half">
+    <div>
+      <label for="mode">表示モード</label>
+      <select id="mode">
+        <option value="ticker">Ticker（固定）</option>
+        <option value="flow">Flow（ニコ動風）</option>
+      </select>
+    </div>
+    <div>
+      <label for="position">位置</label>
+      <select id="position">
+        <option value="right">右下</option>
+        <option value="left">左下</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row-half">
+    <div>
+      <label for="fontSize">フォントサイズ</label>
+      <input type="number" id="fontSize" min="10" max="32" value="14">
+    </div>
+    <div>
+      <label for="opacity">透明度</label>
+      <input type="number" id="opacity" min="0" max="1" step="0.1" value="0.8">
+    </div>
+  </div>
+
+  <div class="row-half">
+    <div>
+      <label for="maxItems">表示件数</label>
+      <input type="number" id="maxItems" min="1" max="20" value="5">
+    </div>
+    <div>
+      <label for="flowSpeed">Flow速度(秒)</label>
+      <input type="number" id="flowSpeed" min="3" max="20" value="8">
+    </div>
+  </div>
+
+  <div class="status off" id="status">OFF</div>
+  <script src="popup.js"></script>
+</body>
+</html>
