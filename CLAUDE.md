@@ -56,5 +56,7 @@ Bot Token Scopes:
 
 ## Linear
 
-- チーム: AIOPS
-- Issue: AIOPS-402
+- チーム: KIRI（個人プロジェクト扱い）
+- プロダクト識別ラベル: `SLACKCV`
+
+このリポジトリ関連の observation / hypothesis / implementation には `SLACKCV` ラベルを付与する。ナレッジ種別ラベル（`observation` / `hypothesis` / `implementation` / `feedback`）と併用する。
