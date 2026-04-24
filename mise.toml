@@ -1,0 +1,14 @@
+[tasks.deploy]
+description = "Chrome 読み込み先（Windows 側）に拡張ファイルを同期"
+run = """
+dest=/mnt/c/Users/SatoshiEbihara/Documents/chrome-extensions/slack-comment-viewer
+rsync -av --delete \\
+  manifest.json \\
+  background.js \\
+  content.js \\
+  content.css \\
+  popup.html \\
+  popup.js \\
+  icons \\
+  "$dest/"
+"""
