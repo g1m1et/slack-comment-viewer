@@ -1,15 +1,28 @@
 let pollingTimer = null;
-let lastTs = null;
+// Slack ts は "SEC.USEC"（6桁マイクロ秒）形式。内部は整数マイクロ秒で扱い、
+// 境界（Slack API / storage）だけ文字列に変換する。1.8e15 は Number.MAX_SAFE_INTEGER (2^53) の約 1/5。
+let lastTsMicro = null;
 let userCache = {};
 let polling = false;
 
+function tsToMicro(ts) {
+  const [sec, usec = ""] = String(ts).split(".");
+  return Number(sec) * 1_000_000 + Number((usec + "000000").slice(0, 6));
+}
+
+function microToTs(micro) {
+  const sec = Math.floor(micro / 1_000_000);
+  const usec = micro % 1_000_000;
+  return `${sec}.${String(usec).padStart(6, "0")}`;
+}
+
 async function loadLastTs() {
   const data = await chrome.storage.local.get({ _lastTs: null });
-  lastTs = data._lastTs;
+  lastTsMicro = data._lastTs === null ? null : tsToMicro(data._lastTs);
 }
 
 async function saveLastTs() {
-  await chrome.storage.local.set({ _lastTs: lastTs });
+  await chrome.storage.local.set({ _lastTs: lastTsMicro === null ? null : microToTs(lastTsMicro) });
 }
 
 async function fetchSlackMessages(token, channel) {
@@ -18,12 +31,12 @@ async function fetchSlackMessages(token, channel) {
     limit: "20",
   });
 
-  if (lastTs) {
-    params.set("oldest", (Number(lastTs) + 0.000001).toString());
+  if (lastTsMicro !== null) {
+    params.set("oldest", microToTs(lastTsMicro + 1));
   } else {
     // Initial fetch: only get messages from the last 30 seconds
-    const now = (Date.now() / 1000).toString();
-    params.set("oldest", (Number(now) - 30).toString());
+    const nowSec = Math.floor(Date.now() / 1000);
+    params.set("oldest", String(nowSec - 30));
   }
 
   const res = await fetch(`https://slack.com/api/conversations.history?${params}`, {
@@ -91,10 +104,10 @@ async function pollOnceInner() {
 
   if (filtered.length === 0) return;
 
-  // messages are returned newest-first; update lastTs to the newest
-  const newestTs = filtered[0].ts;
-  if (!lastTs || Number(newestTs) > Number(lastTs)) {
-    lastTs = newestTs;
+  // messages are returned newest-first; update lastTsMicro to the newest
+  const newestMicro = tsToMicro(filtered[0].ts);
+  if (lastTsMicro === null || newestMicro > lastTsMicro) {
+    lastTsMicro = newestMicro;
     await saveLastTs();
   }
 
@@ -105,11 +118,13 @@ async function pollOnceInner() {
     enriched.push({ user: userName, text: msg.text, ts: msg.ts });
   }
 
-  // Send to all tabs
+  // Fire-and-forget to all tabs; content.js may or may not be present
   const tabs = await chrome.tabs.query({});
   for (const tab of tabs) {
-    chrome.tabs.sendMessage(tab.id, { type: "NEW_MESSAGES", messages: enriched }).catch(() => {
-      // content script not loaded on this tab — ignore
+    chrome.tabs.sendMessage(tab.id, { type: "NEW_MESSAGES", messages: enriched }).catch((e) => {
+      // Silence the expected "no receiver" error for tabs without content.js (chrome://, devtools://, etc.)
+      if (e.message && e.message.includes("Could not establish connection")) return;
+      console.warn("Slack Comment Overlay: sendMessage failed for tab", tab.id, e.message);
     });
   }
 }
@@ -128,7 +143,7 @@ function stopPolling() {
     clearInterval(pollingTimer);
     pollingTimer = null;
   }
-  lastTs = null;
+  lastTsMicro = null;
   userCache = {};
   chrome.storage.local.remove("_lastTs");
   console.log("Slack Comment Overlay: polling stopped");
