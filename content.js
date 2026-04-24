@@ -99,6 +99,21 @@ function renderFlowMessage(msg) {
   item.addEventListener("animationend", () => item.remove());
 }
 
+function clearAllDisplayElements() {
+  // Ticker items: #sco-ticker-list の子要素すべて
+  if (tickerListEl) {
+    tickerListEl.replaceChildren();
+  }
+
+  // Flow items: document.body 直下の .sco-flow-item すべて
+  for (const el of document.querySelectorAll(".sco-flow-item")) {
+    el.remove();
+  }
+
+  // Flow レーン占有記録をリセット
+  laneNextAvailable.fill(0);
+}
+
 function handleNewMessages(messages) {
   if (!currentSettings.enabled) return;
   createOverlay();
@@ -134,11 +149,22 @@ chrome.storage.local.get(
 );
 
 chrome.storage.onChanged.addListener((changes) => {
+  const modeChanged = changes.mode
+    && changes.mode.oldValue !== changes.mode.newValue;
+  const disabledTransition = changes.enabled
+    && changes.enabled.oldValue === true
+    && changes.enabled.newValue === false;
+
   for (const [key, { newValue }] of Object.entries(changes)) {
     if (key in currentSettings) {
       currentSettings[key] = newValue;
     }
   }
+
+  if (modeChanged || disabledTransition) {
+    clearAllDisplayElements();
+  }
+
   if (currentSettings.enabled) createOverlay();
   applySettings();
 });
