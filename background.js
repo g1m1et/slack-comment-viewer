@@ -200,12 +200,10 @@ chrome.storage.onChanged.addListener((changes) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== WATCHDOG_ALARM) return;
-  if (pollingTimer === null) {
-    console.log("Slack Comment Overlay: watchdog reviving polling");
-    startPolling();
-  } else {
-    pollOnce();
-  }
+  // pollingTimer !== null means setInterval is alive; no work needed.
+  if (pollingTimer !== null) return;
+  console.log("Slack Comment Overlay: watchdog reviving polling");
+  startPolling();
 });
 
 chrome.runtime.onStartup.addListener(ensureWatchdog);

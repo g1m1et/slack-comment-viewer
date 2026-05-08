@@ -295,16 +295,14 @@ async function ensureWatchdog() {
 ```js
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== WATCHDOG_ALARM) return;
-  if (pollingTimer === null) {
-    console.log("Slack Comment Overlay: watchdog reviving polling");
-    startPolling();
-  } else {
-    pollOnce();
-  }
+  // pollingTimer !== null means setInterval is alive; no work needed.
+  if (pollingTimer !== null) return;
+  console.log("Slack Comment Overlay: watchdog reviving polling");
+  startPolling();
 });
 ```
 
-`pollingTimer === null` は SW 再起動直後（モジュール初期化で `let pollingTimer = null` が走り、まだ `startPolling()` が動いていない状態）。
+`pollingTimer === null` は SW 再起動直後（モジュール初期化で `let pollingTimer = null` が走り、まだ `startPolling()` が動いていない状態）。`pollingTimer !== null` の時は `pausePolling()` を経由しない限りタイマーが生きているため、watchdog は何もしない。
 
 - [ ] **Step 3: 起動時ブロックに `ensureWatchdog()` を追加**
 
