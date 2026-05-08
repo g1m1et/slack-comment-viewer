@@ -5,6 +5,14 @@ let lastTsMicro = null;
 let userCache = {};
 let polling = false;
 
+const WATCHDOG_ALARM = "polling-watchdog";
+
+async function ensureWatchdog() {
+  const settings = await chrome.storage.local.get({ enabled: false });
+  if (!settings.enabled) return;
+  await chrome.alarms.create(WATCHDOG_ALARM, { periodInMinutes: 1 });
+}
+
 function tsToMicro(ts) {
   const [sec, usec = ""] = String(ts).split(".");
   return Number(sec) * 1_000_000 + Number((usec + "000000").slice(0, 6));
@@ -130,7 +138,7 @@ async function pollOnceInner() {
 }
 
 function startPolling() {
-  stopPolling();
+  pausePolling();
   loadLastTs().then(() => {
     pollOnce();
     pollingTimer = setInterval(pollOnce, 3000);
@@ -138,15 +146,18 @@ function startPolling() {
   });
 }
 
-function stopPolling() {
+function pausePolling() {
   if (pollingTimer) {
     clearInterval(pollingTimer);
     pollingTimer = null;
   }
+}
+
+// resetPollingState: 同期で in-memory をリセットし、非同期で storage を削除する
+function resetPollingState() {
   lastTsMicro = null;
   userCache = {};
-  chrome.storage.local.remove("_lastTs");
-  console.log("Slack Comment Overlay: polling stopped");
+  return chrome.storage.local.remove("_lastTs");
 }
 
 // React to settings changes
@@ -156,24 +167,52 @@ chrome.storage.onChanged.addListener((changes) => {
 
   if (changes.enabled) {
     if (changes.enabled.newValue) {
-      startPolling();
+      // OFF → ON: ensure clean state, then start
+      resetPollingState().then(() => {
+        startPolling();
+        ensureWatchdog();
+      });
     } else {
-      stopPolling();
+      // ON → OFF: stop everything
+      console.log("Slack Comment Overlay: polling stopped");
+      pausePolling();
+      resetPollingState();
+      chrome.alarms.clear(WATCHDOG_ALARM);
     }
+    return;
   }
-  // If token or channel changed while enabled, restart polling
+
+  // token / channel changes while enabled
   if (changes.token || changes.channel) {
     chrome.storage.local.get({ enabled: false }, (settings) => {
-      if (settings.enabled) {
+      if (!settings.enabled) return;
+      if (changes.channel) {
+        // Channel changed: prior ts is meaningless
+        resetPollingState().then(() => startPolling());
+      } else {
+        // Token changed only: keep lastTs
+        pausePolling();
         startPolling();
       }
     });
   }
 });
 
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== WATCHDOG_ALARM) return;
+  // pollingTimer !== null means setInterval is alive; no work needed.
+  if (pollingTimer !== null) return;
+  console.log("Slack Comment Overlay: watchdog reviving polling");
+  startPolling();
+});
+
+chrome.runtime.onStartup.addListener(ensureWatchdog);
+chrome.runtime.onInstalled.addListener(ensureWatchdog);
+
 // On startup, check if already enabled
 chrome.storage.local.get({ enabled: false }, (settings) => {
   if (settings.enabled) {
     startPolling();
+    ensureWatchdog();
   }
 });
