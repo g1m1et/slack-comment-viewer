@@ -130,7 +130,7 @@ async function pollOnceInner() {
 }
 
 function startPolling() {
-  stopPolling();
+  pausePolling();
   loadLastTs().then(() => {
     pollOnce();
     pollingTimer = setInterval(pollOnce, 3000);
@@ -138,15 +138,17 @@ function startPolling() {
   });
 }
 
-function stopPolling() {
+function pausePolling() {
   if (pollingTimer) {
     clearInterval(pollingTimer);
     pollingTimer = null;
   }
+}
+
+function resetPollingState() {
   lastTsMicro = null;
   userCache = {};
-  chrome.storage.local.remove("_lastTs");
-  console.log("Slack Comment Overlay: polling stopped");
+  return chrome.storage.local.remove("_lastTs");
 }
 
 // React to settings changes
@@ -156,15 +158,28 @@ chrome.storage.onChanged.addListener((changes) => {
 
   if (changes.enabled) {
     if (changes.enabled.newValue) {
-      startPolling();
+      // OFF → ON: ensure clean state, then start
+      resetPollingState().then(() => {
+        startPolling();
+      });
     } else {
-      stopPolling();
+      // ON → OFF: stop everything
+      pausePolling();
+      resetPollingState();
     }
+    return;
   }
-  // If token or channel changed while enabled, restart polling
+
+  // token / channel changes while enabled
   if (changes.token || changes.channel) {
     chrome.storage.local.get({ enabled: false }, (settings) => {
-      if (settings.enabled) {
+      if (!settings.enabled) return;
+      if (changes.channel) {
+        // Channel changed: prior ts is meaningless
+        resetPollingState().then(() => startPolling());
+      } else {
+        // Token changed only: keep lastTs
+        pausePolling();
         startPolling();
       }
     });
