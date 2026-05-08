@@ -48,7 +48,10 @@ Bot Token Scopes:
 
 ## 設計上の注意点
 
-- **MV3 Service Worker のライフサイクル**: ワーカーは Chrome により随時終了・再起動される。`setInterval` は失われるため、`_lastTs` を storage に永続化して差分取得を維持している
+- **MV3 Service Worker のライフサイクル**: ワーカーは Chrome により随時終了・再起動される。対策として 2 段構え：
+  - `setInterval(pollOnce, 3000)` で通常時の 3 秒間隔ポーリング
+  - `chrome.alarms` を 1 分間隔の watchdog として並走させ、SW 再起動時に `pollingTimer === null` を検知して `startPolling()` で自己治癒
+  - `_lastTs` は `chrome.storage.local` に永続化され、SW 再起動時も差分取得を維持。`startPolling()` は冒頭で `pausePolling()`（タイマー停止のみ）を呼び、`_lastTs` の wipe は `resetPollingState()`（無効化や channel 変更時のみ呼ばれる）に分離されている
 - **ポーリング重複防止**: `polling` フラグで同時実行を排除
 - **number入力の中間値問題**: popup.js の number フィールドは `change` イベントのみで保存（`input` イベントだとキー入力中の空文字が `0` として保存され表示が停止する）
 - **seenTs による重複排除**: content.js 側で ts ベースの重複チェック。background からの再送に対応
