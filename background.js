@@ -5,6 +5,14 @@ let lastTsMicro = null;
 let userCache = {};
 let polling = false;
 
+const WATCHDOG_ALARM = "polling-watchdog";
+
+async function ensureWatchdog() {
+  const settings = await chrome.storage.local.get({ enabled: false });
+  if (!settings.enabled) return;
+  await chrome.alarms.create(WATCHDOG_ALARM, { periodInMinutes: 1 });
+}
+
 function tsToMicro(ts) {
   const [sec, usec = ""] = String(ts).split(".");
   return Number(sec) * 1_000_000 + Number((usec + "000000").slice(0, 6));
@@ -145,6 +153,7 @@ function pausePolling() {
   }
 }
 
+// resetPollingState: 同期で in-memory をリセットし、非同期で storage を削除する
 function resetPollingState() {
   lastTsMicro = null;
   userCache = {};
@@ -161,11 +170,14 @@ chrome.storage.onChanged.addListener((changes) => {
       // OFF → ON: ensure clean state, then start
       resetPollingState().then(() => {
         startPolling();
+        ensureWatchdog();
       });
     } else {
       // ON → OFF: stop everything
+      console.log("Slack Comment Overlay: polling stopped");
       pausePolling();
       resetPollingState();
+      chrome.alarms.clear(WATCHDOG_ALARM);
     }
     return;
   }
@@ -186,9 +198,23 @@ chrome.storage.onChanged.addListener((changes) => {
   }
 });
 
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== WATCHDOG_ALARM) return;
+  if (pollingTimer === null) {
+    console.log("Slack Comment Overlay: watchdog reviving polling");
+    startPolling();
+  } else {
+    pollOnce();
+  }
+});
+
+chrome.runtime.onStartup.addListener(ensureWatchdog);
+chrome.runtime.onInstalled.addListener(ensureWatchdog);
+
 // On startup, check if already enabled
 chrome.storage.local.get({ enabled: false }, (settings) => {
   if (settings.enabled) {
     startPolling();
+    ensureWatchdog();
   }
 });
