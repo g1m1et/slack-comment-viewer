@@ -69,11 +69,22 @@ function renderTickerMessage(msg) {
   }
 }
 
+function colorFromUser(name) {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const hue = Math.abs(h) % 360;
+  return `hsl(${hue}, 70%, 65%)`;
+}
+
 function renderFlowMessage(msg) {
   const item = document.createElement("div");
   item.className = "sco-flow-item";
   item.style.fontSize = (currentSettings.fontSize + 4) + "px";
   item.style.opacity = currentSettings.opacity;
+  item.style.color = colorFromUser(msg.user);
   item.textContent = msg.user + ": " + msg.text;
 
   // Pick the lane that became available earliest
