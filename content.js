@@ -76,7 +76,7 @@ function colorFromUser(name) {
     h = Math.imul(h, 16777619);
   }
   const hue = Math.abs(h) % 360;
-  return `hsl(${hue}, 70%, 65%)`;
+  return `hsl(${hue}, 80%, 85%)`;
 }
 
 function renderFlowMessage(msg) {
