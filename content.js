@@ -1,4 +1,7 @@
-const FLOW_LANES = 8;
+// レーン高さ = (flow item の実フォント px) * この係数。
+// 1.0 で文字密着、1.4 前後が AA を密に並べつつ可読性を保つ実用解。
+const FLOW_LANE_HEIGHT_RATIO = 1.4;
+let FLOW_LANES = 8; // 設定読込前の暫定値。computeFlowLaneCount() で上書き
 let laneNextAvailable = new Array(FLOW_LANES).fill(0);
 const seenTs = new Set();
 let overlayEl = null;
@@ -69,6 +72,22 @@ function renderTickerMessage(msg) {
   }
 }
 
+function getFlowLaneHeightPx() {
+  const fontPx = (currentSettings.fontSize ?? 14) + 4;
+  return Math.max(20, Math.round(fontPx * FLOW_LANE_HEIGHT_RATIO));
+}
+
+function computeFlowLaneCount() {
+  return Math.max(4, Math.floor(window.innerHeight / getFlowLaneHeightPx()));
+}
+
+function recomputeFlowLanes() {
+  const next = computeFlowLaneCount();
+  if (next === FLOW_LANES) return;
+  FLOW_LANES = next;
+  laneNextAvailable = new Array(FLOW_LANES).fill(0);
+}
+
 function colorFromUser(name) {
   let h = 2166136261;
   for (let i = 0; i < name.length; i++) {
@@ -80,12 +99,26 @@ function colorFromUser(name) {
 }
 
 function renderFlowMessage(msg) {
+  const lines = (msg.text ?? "").split("\n");
+  if (lines.length <= 1) {
+    renderFlowLine(msg.user, msg.user + ": " + (lines[0] ?? ""));
+    return;
+  }
+  // Multiline: 投稿者名行を見出しとして先頭に置き、本文は AA を崩さないよう
+  // 純粋な各行のみで流す（1行目にプレフィックスを乗せると行頭がずれるため）
+  renderFlowLine(msg.user, msg.user + ":");
+  for (const line of lines) {
+    renderFlowLine(msg.user, line);
+  }
+}
+
+function renderFlowLine(user, text) {
   const item = document.createElement("div");
   item.className = "sco-flow-item";
   item.style.fontSize = (currentSettings.fontSize + 4) + "px";
   item.style.opacity = currentSettings.opacity;
-  item.style.color = colorFromUser(msg.user);
-  item.textContent = msg.user + ": " + msg.text;
+  item.style.color = colorFromUser(user);
+  item.textContent = text;
 
   // Pick the lane that became available earliest
   const now = Date.now();
@@ -97,14 +130,22 @@ function renderFlowMessage(msg) {
   }
 
   const speed = currentSettings.flowSpeed;
-  const laneHeight = window.innerHeight / FLOW_LANES;
+  const laneHeight = getFlowLaneHeightPx();
   item.style.top = (bestLane * laneHeight + 10) + "px";
-  item.style.animationDuration = speed + "s";
 
   document.body.appendChild(item);
 
+  // keyframes は 100vw → -100% を進むため、移動距離は (画面幅 + 要素幅)。
+  // duration 固定だと文字長で速度がブレるので、画面幅を speed 秒で通過する
+  // px/s を基準に要素ごとに duration を補正し、AA の同一メッセージ内で
+  // 行ごとの進行速度が揃うようにする。
+  const distance = window.innerWidth + item.offsetWidth;
+  const pxPerSec = window.innerWidth / speed;
+  const durationSec = distance / pxPerSec;
+  item.style.animationDuration = durationSec + "s";
+
   // Mark lane as occupied for a portion of the duration (so next message doesn't overlap)
-  laneNextAvailable[bestLane] = now + (speed * 0.3 * 1000);
+  laneNextAvailable[bestLane] = now + (durationSec * 0.3 * 1000);
 
   // Remove element after animation completes
   item.addEventListener("animationend", () => item.remove());
@@ -153,6 +194,7 @@ chrome.storage.local.get(
   currentSettings,
   (settings) => {
     currentSettings = { ...currentSettings, ...settings };
+    recomputeFlowLanes();
     if (currentSettings.enabled) {
       createOverlay();
     }
@@ -172,6 +214,10 @@ chrome.storage.onChanged.addListener((changes) => {
     }
   }
 
+  if (changes.fontSize) {
+    recomputeFlowLanes();
+  }
+
   if (modeChanged || disabledTransition) {
     clearAllDisplayElements();
   }
@@ -179,3 +225,5 @@ chrome.storage.onChanged.addListener((changes) => {
   if (currentSettings.enabled) createOverlay();
   applySettings();
 });
+
+window.addEventListener("resize", recomputeFlowLanes);
